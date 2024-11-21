@@ -13,4 +13,3 @@ proxies:
 
 ufw:
   enable: true
-ok
