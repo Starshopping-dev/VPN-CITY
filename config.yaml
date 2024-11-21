@@ -8,3 +8,6 @@ proxies:
   base_port: 8881
   username: "proxyuser"  # Proxy username
   password: "proxypass"  # Proxy password
+
+ufw:
+  enable: true  # Set to false if you don't want UFW rules
