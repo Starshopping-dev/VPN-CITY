@@ -16,8 +16,17 @@ def get_server_ip():
     """
     Get the IP address of the server running the script.
     """
-    hostname = socket.gethostname()
-    return socket.gethostbyname(hostname)
+    try:
+        # Try to get the actual server IP rather than localhost
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        # Fallback to hostname method
+        hostname = socket.gethostname()
+        return socket.gethostbyname(hostname)
 
 
 def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
