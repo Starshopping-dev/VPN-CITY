@@ -1,16 +1,4 @@
-proxies:
-  count: 20
-  base_port: 8880
-  username: "badvibez"
-  password: "forever"
-
-ufw:
-  enable: true
-
 nordvpn:
-  user: "your_nordvpn_user"
-  pass: "your_nordvpn_pass"
-  network: "31.94.70.126/32"
   countries:
     random: false  # If true, uses random countries, ignores list below
     Albania: false
@@ -123,3 +111,15 @@ nordvpn:
     Uzbekistan: false
     Venezuela: false
     Vietnam: false
+  user: "your_nordvpn_user"
+  pass: "your_nordvpn_pass"
+  network: "31.94.70.126/32"
+
+proxies:
+  count: 20
+  base_port: 8880
+  username: "badvibez"
+  password: "forever"
+
+ufw:
+  enable: true

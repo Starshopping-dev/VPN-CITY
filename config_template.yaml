@@ -1,0 +1,19 @@
+nordvpn:
+  countries:
+    random: false  # If true, uses random countries, ignores list below
+    Albania: false
+    Algeria: false
+    # ... [all countries]
+    Vietnam: false
+  user: "your_nordvpn_user"
+  pass: "your_nordvpn_pass"
+  network: "your_ip/32"
+
+proxies:
+  count: 20
+  base_port: 8880
+  username: "badvibez"
+  password: "forever"
+
+ufw:
+  enable: true 

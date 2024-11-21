@@ -125,67 +125,35 @@ MIT License
 
 This tool is for legitimate use only. Users are responsible for complying with all applicable laws and NordVPN's terms of service.
 
-## Configuration
+## Configuration Structure
 
-### Basic Setup
-Create a `config.yaml` file with your settings:
+The config.yaml file is structured with countries at the top for automatic updates:
 
-## Country Configuration
-
-### Basic Configuration
-The config.yaml file supports two modes for country selection:
-
-1. Random Mode:
 ```yaml
 nordvpn:
   countries:
-    random: true    # Will use all available countries
-    # Other country settings are ignored when random is true
-```
-
-2. Specific Countries Mode:
-```yaml
-nordvpn:
-  countries:
-    random: false   # Must be false to use specific countries
-    United States: true   # Will use US servers
-    Vietnam: true        # Will use Vietnam servers
-    France: false       # Won't use French servers
-    # etc...
-```
-
-### Available Countries
-All available countries are listed in config.yaml. To enable a country:
-1. Set `random: false`
-2. Set desired countries to `true`
-3. Leave unwanted countries as `false`
-
-### Updating Country List
-To get the latest country list:
-```bash
-python update_countries.py
-```
-This will:
-- Update config.yaml with the latest available countries
-- Preserve your existing country selections
-- Create a backup of your current config
-
-### Example Configuration
-```yaml
-nordvpn:
+    random: false  # Override: if true, uses all countries
+    Albania: false
+    Algeria: false
+    # ... [all countries listed alphabetically]
+    Vietnam: false
   user: "your_nordvpn_user"
   pass: "your_nordvpn_pass"
   network: "your_ip/32"
-  countries:
-    random: false
-    United States: true
-    United Kingdom: true
-    Japan: true
-    # Other countries set to false...
 
 proxies:
   count: 20
   base_port: 8880
   username: "badvibez"
   password: "forever"
+
+ufw:
+  enable: true
 ```
+
+### Important Notes:
+- Countries must stay at the top of the config for auto-updates to work
+- All countries are listed alphabetically
+- Default to false is safer
+- Random mode overrides individual country settings
+- Country settings are preserved during updates
