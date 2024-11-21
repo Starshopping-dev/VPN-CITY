@@ -1,13 +1,125 @@
 nordvpn:
   user: "your_nordvpn_user"
   pass: "your_nordvpn_pass"
-  network: "31.94.70.126/32"  # Your whitelisted IP
+  network: "31.94.70.126/32"
+  countries:
+    random: false  # If true, uses random countries, ignores list below
+    Albania: false
+    Algeria: false
+    Andorra: false
+    Argentina: false
+    Armenia: false
+    Australia: false
+    Austria: false
+    Azerbaijan: false
+    Bahamas: false
+    Bangladesh: false
+    Belgium: false
+    Belize: false
+    Bermuda: false
+    Bhutan: false
+    Bolivia: false
+    Bosnia and Herzegovina: false
+    Brazil: false
+    Brunei Darussalam: false
+    Bulgaria: false
+    Cambodia: false
+    Canada: false
+    Cayman Islands: false
+    Chile: false
+    Colombia: false
+    Costa Rica: false
+    Croatia: false
+    Cyprus: false
+    Czech Republic: false
+    Denmark: false
+    Dominican Republic: false
+    Ecuador: false
+    Egypt: false
+    El Salvador: false
+    Estonia: false
+    Finland: false
+    France: false
+    Georgia: false
+    Germany: false
+    Ghana: false
+    Greece: false
+    Greenland: false
+    Guam: false
+    Guatemala: false
+    Honduras: false
+    Hong Kong: false
+    Hungary: false
+    Iceland: false
+    India: false
+    Indonesia: false
+    Ireland: false
+    Isle of Man: false
+    Israel: false
+    Italy: false
+    Jamaica: false
+    Japan: false
+    Jersey: false
+    Kazakhstan: false
+    Kenya: false
+    Latvia: false
+    Lebanon: false
+    Liechtenstein: false
+    Lithuania: false
+    Luxembourg: false
+    Malaysia: false
+    Malta: false
+    Mexico: false
+    Moldova: false
+    Monaco: false
+    Mongolia: false
+    Montenegro: false
+    Morocco: false
+    Myanmar: false
+    Nepal: false
+    Netherlands: false
+    New Zealand: false
+    Nigeria: false
+    North Macedonia: false
+    Norway: false
+    Pakistan: false
+    Panama: false
+    Papua New Guinea: false
+    Paraguay: false
+    Peru: false
+    Philippines: false
+    Poland: false
+    Portugal: false
+    Puerto Rico: false
+    Romania: false
+    Serbia: false
+    Singapore: false
+    Slovakia: false
+    Slovenia: false
+    South Africa: false
+    South Korea: false
+    Spain: false
+    Sri Lanka: false
+    Sweden: false
+    Switzerland: false
+    Taiwan: false
+    Thailand: false
+    Trinidad and Tobago: false
+    Turkey: false
+    Ukraine: false
+    United Arab Emirates: false
+    United Kingdom: false
+    United States: false
+    Uruguay: false
+    Uzbekistan: false
+    Venezuela: false
+    Vietnam: false
 
 proxies:
-  count: 5  # Number of proxies you want
-  base_port: 8880  # Starting port number
-  username: "badvibez"  # Proxy username from your working config
-  password: "forever"  # Proxy password from your working config
+  count: 20
+  base_port: 8880
+  username: "badvibez"
+  password: "forever"
 
 ufw:
-  enable: true  # Enable UFW rules
+  enable: true

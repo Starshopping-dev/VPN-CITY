@@ -29,10 +29,38 @@ This project automates the creation of multiple proxy servers, each running thro
 
 ## Usage
 
-1. Run `python generate.py` to create your proxy setup
-2. Navigate to the generated `multi_proxy_setup` directory
-3. Start your proxies with `docker-compose up -d`
-4. Find your proxy list in `proxies.txt`
+1. Update country list and config:
+   ```bash
+   python update_countries.py
+   ```
+   This will:
+   - Create/update config.yaml with latest country list
+   - Preserve any existing country settings
+   - Create a backup of your existing config
+
+2. Configure settings in config.yaml:
+   - Add your NordVPN credentials
+   - Set your whitelisted IP in network
+   - Enable desired countries (set to true)
+   - Set random: true to use all countries
+   - Configure number of proxies and ports
+
+3. Generate proxy setup:
+   ```bash
+   python generate.py
+   ```
+   This creates:
+   - Docker compose configuration
+   - Tinyproxy settings
+   - UFW rules if enabled
+
+4. Start the proxies:
+   ```bash
+   cd multi_proxy_setup
+   docker-compose up -d
+   ```
+
+Your proxies will be listed in `multi_proxy_setup/proxies.txt`
 
 ## Proxy Format
 
@@ -89,3 +117,68 @@ MIT License
 ## Disclaimer
 
 This tool is for legitimate use only. Users are responsible for complying with all applicable laws and NordVPN's terms of service.
+
+## Configuration
+
+### Basic Setup
+Create a `config.yaml` file with your settings:
+
+## Country Configuration
+
+### Basic Configuration
+The config.yaml file supports two modes for country selection:
+
+1. Random Mode:
+```yaml
+nordvpn:
+  countries:
+    random: true    # Will use all available countries
+    # Other country settings are ignored when random is true
+```
+
+2. Specific Countries Mode:
+```yaml
+nordvpn:
+  countries:
+    random: false   # Must be false to use specific countries
+    United States: true   # Will use US servers
+    Vietnam: true        # Will use Vietnam servers
+    France: false       # Won't use French servers
+    # etc...
+```
+
+### Available Countries
+All available countries are listed in config.yaml. To enable a country:
+1. Set `random: false`
+2. Set desired countries to `true`
+3. Leave unwanted countries as `false`
+
+### Updating Country List
+To get the latest country list:
+```bash
+python update_countries.py
+```
+This will:
+- Update config.yaml with the latest available countries
+- Preserve your existing country selections
+- Create a backup of your current config
+
+### Example Configuration
+```yaml
+nordvpn:
+  user: "your_nordvpn_user"
+  pass: "your_nordvpn_pass"
+  network: "your_ip/32"
+  countries:
+    random: false
+    United States: true
+    United Kingdom: true
+    Japan: true
+    # Other countries set to false...
+
+proxies:
+  count: 20
+  base_port: 8880
+  username: "badvibez"
+  password: "forever"
+```
