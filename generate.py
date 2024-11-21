@@ -162,34 +162,6 @@ networks:
     if enable_ufw:
         setup_ufw_rules(port_list)
 
-    # Create tinyproxy config
-    tinyproxy_config = f"""User nobody
-Group nobody
-Port 8888
-Timeout 600
-LogFile "/etc/tinyproxy/tinyproxy.log"
-LogLevel Info
-MaxClients 100
-StatFile "/etc/tinyproxy/stats.html"
-DefaultErrorFile "/etc/tinyproxy/default.html"
-ViaProxyName "tinyproxy"
-BasicAuth {proxy_user} {proxy_pass}
-
-# Allow connections from the local machine
-Allow 127.0.0.1/32
-
-# Allow all external connections
-Allow 0.0.0.0/0
-
-# Listen on all interfaces
-Listen 0.0.0.0
-"""
-
-    # Write tinyproxy config
-    config_path = os.path.join(output_dir, "data", "tinyproxy.conf")
-    with open(config_path, "w") as f:
-        f.write(tinyproxy_config)
-
 
 def setup_ufw_rules(port_list):
     """
