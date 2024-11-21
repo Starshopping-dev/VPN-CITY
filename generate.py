@@ -67,20 +67,21 @@ def get_server_ip():
         return socket.gethostbyname(hostname)
 
 
-def get_random_countries(config):
+def get_country_ids(config):
     """
-    Get random country IDs based on configuration.
+    Returns a semicolon-separated string of country IDs
+    based on the 'random' setting and enabled countries in the config.
     """
     if config["nordvpn"]["countries"].get("random", False):
         return ';'.join(map(str, BUILTIN_COUNTRIES.values()))
-    
-    available_ids = [
-        BUILTIN_COUNTRIES[country] 
-        for country, enabled in config["nordvpn"]["countries"].items() 
+
+    enabled_ids = [
+        BUILTIN_COUNTRIES[country]
+        for country, enabled in config["nordvpn"]["countries"].items()
         if enabled and country in BUILTIN_COUNTRIES and country != "random"
     ]
-    
-    return ';'.join(map(str, available_ids))
+
+    return ';'.join(map(str, enabled_ids))
 
 
 def is_port_available(port):
@@ -110,10 +111,12 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
     # Get server IP
     server_ip = get_server_ip()
 
-    # Create output directory and tinyproxy config directory
+    # Create output directory and tinyproxy config directory with proper permissions
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, "data"), exist_ok=True)
-    os.makedirs(os.path.join(output_dir, "data", "logs"), exist_ok=True)
+    logs_dir = os.path.join(output_dir, "data", "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    os.chmod(logs_dir, 0o777)  # Give full permissions to logs directory
 
     # Create tinyproxy config FIRST
     tinyproxy_config = f"""User nobody
@@ -162,9 +165,9 @@ services:
       - USER={nordvpn_user}
       - PASS={nordvpn_pass}
       - COUNTRY={countries}
-      - NETWORK={network}
       - RANDOM_TOP=1000
       - RECREATE_VPN_CRON=*/3 * * * *
+      - NETWORK={network}
       - OPENVPN_OPTS=--mute-replay-warnings
     ports:
       - "{port}:8888"
@@ -206,7 +209,7 @@ networks:
             raise ValueError(f"Port {port} is already in use. Please choose a different base_port.")
     
     # Get countries string ONCE before the loop
-    countries = get_random_countries(config)
+    countries = get_country_ids(config)
     
     for i in range(1, num_proxies + 1):
         port = base_port + i - 1
@@ -271,23 +274,6 @@ def validate_config(config):
         if key not in config:
             raise ValueError(f"Missing required key in config.yaml: {key}")
     return True
-
-
-def get_country_ids(config):
-    """
-    Returns a semicolon-separated string of country IDs
-    based on the 'random' setting and enabled countries in the config.
-    """
-    if config["nordvpn"]["countries"].get("random", False):
-        return ';'.join(map(str, BUILTIN_COUNTRIES.values()))
-
-    enabled_ids = [
-        BUILTIN_COUNTRIES[country]
-        for country, enabled in config["nordvpn"]["countries"].items()
-        if enabled and country in BUILTIN_COUNTRIES and country != "random"
-    ]
-
-    return ';'.join(map(str, enabled_ids))
 
 
 if __name__ == "__main__":

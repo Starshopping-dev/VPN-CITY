@@ -97,8 +97,12 @@ def update_docker_compose(countries, config):
             ]
             
             if not enabled_ids:
-                logging.warning("No countries are enabled in config.yaml. Skipping docker-compose update.")
-                return
+                if config["nordvpn"]["countries"].get("random", False):
+                    # If random mode is enabled, use all countries
+                    enabled_ids = [str(id) for id in countries.values()]
+                else:
+                    logging.warning("No countries are enabled in config.yaml. Skipping docker-compose update.")
+                    return
             
             country_string = ';'.join(enabled_ids)
             

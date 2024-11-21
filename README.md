@@ -79,10 +79,10 @@ Your proxies will be accessible at:
 ## Container Structure
 
 Each proxy setup includes:
-- A NordVPN container for VPN connection
+- A NordVPN container for VPN connection (using azinchen/nordvpn:latest)
 - A Tinyproxy container for proxy service
 - An isolated Docker network
-- Automatic port forwarding
+- Automatic port forwarding and reconnection
 
 ## Security Notes
 
