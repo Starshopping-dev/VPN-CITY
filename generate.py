@@ -28,8 +28,6 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
     # Load configurations
     nordvpn_user = config["nordvpn"]["user"]
     nordvpn_pass = config["nordvpn"]["pass"]
-    country = config["nordvpn"].get("country", "random")  # Default to random if not set
-    auto_connect = config["nordvpn"].get("auto_connect", True)
     network = config["nordvpn"]["network"]
     num_proxies = config["proxies"]["count"]
     base_port = config["proxies"]["base_port"]
@@ -40,8 +38,38 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
     # Get server IP
     server_ip = get_server_ip()
 
-    # Create output directory
+    # Create output directory and tinyproxy config directory
     os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "data"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "data", "logs"), exist_ok=True)
+
+    # Create tinyproxy config FIRST
+    tinyproxy_config = f"""User nobody
+Group nobody
+Port 8888
+Timeout 600
+LogFile "/etc/tinyproxy/logs/tinyproxy.log"
+LogLevel Info
+MaxClients 100
+StatFile "/etc/tinyproxy/stats.html"
+DefaultErrorFile "/etc/tinyproxy/default.html"
+ViaProxyName "tinyproxy"
+BasicAuth {proxy_user} {proxy_pass}
+
+# Allow connections from the local machine
+Allow 127.0.0.1/32
+
+# Allow all external connections
+Allow 0.0.0.0/0
+
+# Listen on all interfaces
+Listen 0.0.0.0
+"""
+
+    # Write tinyproxy config
+    config_path = os.path.join(output_dir, "data", "tinyproxy.conf")
+    with open(config_path, "w") as f:
+        f.write(tinyproxy_config)
 
     # Docker Compose header
     docker_compose_content = """
@@ -61,13 +89,11 @@ services:
     environment:
       - USER={nordvpn_user}
       - PASS={nordvpn_pass}
-      - COUNTRY={country}
-      - AUTO_CONNECT={auto_connect}
+      - COUNTRY=234;126
       - NETWORK={network}
-      - OPENVPN_OPTS=--mute-replay-warnings
-      - TECHNOLOGY=NordLynx
       - RANDOM_TOP=1000
       - RECREATE_VPN_CRON=*/3 * * * *
+      - OPENVPN_OPTS=--mute-replay-warnings
     ports:
       - "{port}:8888"
     restart: unless-stopped
@@ -80,11 +106,12 @@ services:
 
   tinyproxy_{index}:
     image: vimagick/tinyproxy
+    container_name: tinyproxy_{index}
     network_mode: service:nordvpn_{index}
+    volumes:
+      - ./data:/etc/tinyproxy
     depends_on:
       - nordvpn_{index}
-    environment:
-      - BasicAuth={proxy_user}:{proxy_pass}
     restart: unless-stopped
 """
 
@@ -106,8 +133,6 @@ networks:
             port=port,
             nordvpn_user=nordvpn_user,
             nordvpn_pass=nordvpn_pass,
-            country=country,
-            auto_connect=str(auto_connect).lower(),
             network=network,
             proxy_user=proxy_user,
             proxy_pass=proxy_pass,
@@ -136,6 +161,34 @@ networks:
     # Set up UFW rules if enabled
     if enable_ufw:
         setup_ufw_rules(port_list)
+
+    # Create tinyproxy config
+    tinyproxy_config = f"""User nobody
+Group nobody
+Port 8888
+Timeout 600
+LogFile "/etc/tinyproxy/tinyproxy.log"
+LogLevel Info
+MaxClients 100
+StatFile "/etc/tinyproxy/stats.html"
+DefaultErrorFile "/etc/tinyproxy/default.html"
+ViaProxyName "tinyproxy"
+BasicAuth {proxy_user} {proxy_pass}
+
+# Allow connections from the local machine
+Allow 127.0.0.1/32
+
+# Allow all external connections
+Allow 0.0.0.0/0
+
+# Listen on all interfaces
+Listen 0.0.0.0
+"""
+
+    # Write tinyproxy config
+    config_path = os.path.join(output_dir, "data", "tinyproxy.conf")
+    with open(config_path, "w") as f:
+        f.write(tinyproxy_config)
 
 
 def setup_ufw_rules(port_list):

@@ -1,15 +1,13 @@
 nordvpn:
   user: "your_nordvpn_user"
   pass: "your_nordvpn_pass"
-  country: "US"  # Specify country or set to "random"
-  auto_connect: true
-  network: "31.94.70.126/32"
+  network: "31.94.70.126/32"  # Your whitelisted IP
 
 proxies:
-  count: 5
-  base_port: 8888
-  username: "proxyuser"
-  password: "proxypass"
+  count: 5  # Number of proxies you want
+  base_port: 8880  # Starting port number
+  username: "badvibez"  # Proxy username from your working config
+  password: "forever"  # Proxy password from your working config
 
 ufw:
-  enable: true
+  enable: true  # Enable UFW rules
