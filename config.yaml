@@ -1,0 +1,11 @@
+nordvpn:
+  user: "your_nordvpn_user"
+  pass: "your_nordvpn_pass"
+  network: "31.94.70.126/32" # whitelist ip
+
+proxies:
+  count: 20
+  base_port: 8881
+
+ufw:
+  enable: true
