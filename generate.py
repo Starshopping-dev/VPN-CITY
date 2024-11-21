@@ -3,12 +3,14 @@ import yaml
 import socket
 import subprocess
 
+
 def load_config(config_path="config.yaml"):
     """
     Load configuration from config.yaml.
     """
     with open(config_path, "r") as file:
         return yaml.safe_load(file)
+
 
 def get_server_ip():
     """
@@ -17,14 +19,17 @@ def get_server_ip():
     hostname = socket.gethostname()
     return socket.gethostbyname(hostname)
 
+
 def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
     """
     Generate a docker-compose.yml for Tinyproxy + NordVPN pairs using configurations from a YAML file,
-    and optionally set up UFW rules.
+    and set up UFW rules if enabled.
     """
     # Load configurations
     nordvpn_user = config["nordvpn"]["user"]
     nordvpn_pass = config["nordvpn"]["pass"]
+    country = config["nordvpn"].get("country", "random")  # Default to random if not set
+    auto_connect = config["nordvpn"].get("auto_connect", True)
     network = config["nordvpn"]["network"]
     num_proxies = config["proxies"]["count"]
     base_port = config["proxies"]["base_port"]
@@ -47,9 +52,8 @@ services:
 
     # Template for Tinyproxy + NordVPN pair
     service_template = """
-  vpn{index}:
+  nordvpn_{index}:
     image: azinchen/nordvpn:latest
-    container_name: vpn{index}
     cap_add:
       - NET_ADMIN
     devices:
@@ -57,19 +61,31 @@ services:
     environment:
       - USER={nordvpn_user}
       - PASS={nordvpn_pass}
+      - COUNTRY={country}
+      - AUTO_CONNECT={auto_connect}
       - NETWORK={network}
-    networks:
-      - vpn_net_{index}
-
-  tinyproxy{index}:
-    image: vimagick/tinyproxy
-    container_name: tinyproxy{index}
-    networks:
-      - vpn_net_{index}
+      - OPENVPN_OPTS=--mute-replay-warnings
+      - TECHNOLOGY=NordLynx
+      - RANDOM_TOP=1000
+      - RECREATE_VPN_CRON=*/3 * * * *
     ports:
       - "{port}:8888"
+    restart: unless-stopped
+    networks:
+      - vpn_net_{index}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  tinyproxy_{index}:
+    image: vimagick/tinyproxy
+    network_mode: service:nordvpn_{index}
+    depends_on:
+      - nordvpn_{index}
     environment:
       - BasicAuth={proxy_user}:{proxy_pass}
+    restart: unless-stopped
 """
 
     # Network template
@@ -86,8 +102,15 @@ networks:
     for i in range(1, num_proxies + 1):
         port = base_port + i - 1
         vpn_services += service_template.format(
-            index=i, port=port, nordvpn_user=nordvpn_user, nordvpn_pass=nordvpn_pass, network=network,
-            proxy_user=proxy_user, proxy_pass=proxy_pass
+            index=i,
+            port=port,
+            nordvpn_user=nordvpn_user,
+            nordvpn_pass=nordvpn_pass,
+            country=country,
+            auto_connect=str(auto_connect).lower(),
+            network=network,
+            proxy_user=proxy_user,
+            proxy_pass=proxy_pass,
         )
         networks += f"  vpn_net_{i}:\n    driver: bridge\n"
         proxy_list.append(f"Proxy {i}: http://{proxy_user}:{proxy_pass}@{server_ip}:{port}")
@@ -114,6 +137,7 @@ networks:
     if enable_ufw:
         setup_ufw_rules(port_list)
 
+
 def setup_ufw_rules(port_list):
     """
     Set up UFW rules for the given list of ports.
@@ -129,7 +153,7 @@ def setup_ufw_rules(port_list):
     except subprocess.CalledProcessError as e:
         print(f"Error setting up UFW rules: {e}")
 
-# Example usage
+
 if __name__ == "__main__":
     # Load configuration from config.yaml
     config = load_config()
