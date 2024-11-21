@@ -80,6 +80,8 @@ Contributions welcome! Please:
 
 Special thanks to [@azinchen](https://github.com/azinchen/nordvpn) for creating and maintaining the NordVPN Docker image that makes this project possible.
 
+Special thanks to [@Flechaa](https://github.com/Flechaa/Flechaa) for his knowledge and guidance throughout this project.
+
 ## License
 
 MIT License
