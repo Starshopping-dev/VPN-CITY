@@ -29,12 +29,10 @@ def backup_config():
         print(f"Warning: Could not create backup: {e}")
 
 def update_config_file(countries):
-    """
-    Update config.yaml with latest country list while preserving existing settings
-    """
+    """Update config.yaml with latest country list while preserving existing settings"""
     try:
         if not os.path.exists('config.yaml'):
-            print("No existing config.yaml found, creating new one...")
+            logging.info("No existing config.yaml found, creating new one...")
             config = {'nordvpn': {'countries': {}}, 'proxies': {}, 'ufw': {}}
         else:
             backup_config()
@@ -59,13 +57,27 @@ def update_config_file(countries):
         with open('config.yaml', 'w') as f:
             yaml.dump(config, f, default_flow_style=False)
         
-        print("Successfully updated config.yaml with latest country list")
-        print("Preserved existing country settings")
-        print("\nNext steps:")
-        print("1. Edit config.yaml to enable desired countries")
-        print("2. cd multi_proxy_setup")
-        print("3. docker-compose up -d")
-        return config  # Return the config for use in update_docker_compose
+        logging.info("Successfully updated config.yaml with latest country list")
+        logging.info("Preserved existing country settings")
+        
+        # Check if any countries are enabled
+        enabled_countries = [
+            country for country, enabled in config['nordvpn']['countries'].items()
+            if enabled and country != 'random'
+        ]
+        
+        if not enabled_countries and not config['nordvpn']['countries'].get('random', False):
+            logging.warning("No countries are currently enabled in config.yaml")
+            logging.info("\nNext steps:")
+            logging.info("1. Edit config.yaml to enable desired countries")
+            logging.info("2. Run 'python generate.py' to create proxy setup")
+            logging.info("3. cd multi_proxy_setup && docker-compose up -d")
+        else:
+            logging.info("\nNext steps:")
+            logging.info("1. Run 'python generate.py' to update proxy setup")
+            logging.info("2. cd multi_proxy_setup && docker-compose up -d")
+        
+        return config
     except Exception as e:
         print(f"Error updating config: {e}")
         print("Your original config.yaml is preserved in the backup")

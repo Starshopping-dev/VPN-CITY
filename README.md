@@ -37,6 +37,7 @@ This project automates the creation of multiple proxy servers, each running thro
    - Create/update config.yaml with latest country list
    - Preserve any existing country settings
    - Create a backup of your existing config
+   - Note: This only updates the configuration files
 
 2. Configure settings in config.yaml:
    - Add your NordVPN credentials
@@ -49,10 +50,16 @@ This project automates the creation of multiple proxy servers, each running thro
    ```bash
    python generate.py
    ```
-   This creates:
-   - Docker compose configuration
-   - Tinyproxy settings
-   - UFW rules if enabled
+   This is REQUIRED after:
+   - Running update_countries.py
+   - Making any changes to config.yaml
+   - Changing enabled countries
+   
+   It will:
+   - Create new docker-compose.yml with your settings
+   - Set up tinyproxy configuration
+   - Configure UFW rules if enabled
+   - Create fresh proxy list
 
 4. Start the proxies:
    ```bash
