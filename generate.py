@@ -1,6 +1,5 @@
 import os
 import yaml
-import subprocess
 import socket
 
 def load_config(config_path="config.yaml"):
@@ -19,8 +18,7 @@ def get_server_ip():
 
 def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
     """
-    Generate a docker-compose.yml for Tinyproxy + NordVPN pairs using configurations from a YAML file,
-    and set up UFW rules for the generated proxy ports.
+    Generate a docker-compose.yml for Tinyproxy + NordVPN pairs using configurations from a YAML file.
     """
     # Load configurations
     nordvpn_user = config["nordvpn"]["user"]
@@ -28,7 +26,8 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
     network = config["nordvpn"]["network"]
     num_proxies = config["proxies"]["count"]
     base_port = config["proxies"]["base_port"]
-    enable_ufw = config["ufw"]["enable"]
+    proxy_user = config["proxies"]["username"]
+    proxy_pass = config["proxies"]["password"]
 
     # Get server IP
     server_ip = get_server_ip()
@@ -56,7 +55,6 @@ services:
       - USER={nordvpn_user}
       - PASS={nordvpn_pass}
       - NETWORK={network}
-    restart: unless-stopped
     networks:
       - vpn_net_{index}
 
@@ -68,8 +66,7 @@ services:
     ports:
       - "{port}:8888"
     environment:
-      - BasicAuth=badvibez:forever
-    restart: unless-stopped
+      - BasicAuth={proxy_user}:{proxy_pass}
 """
 
     # Network template
@@ -81,16 +78,15 @@ networks:
     # Generate services and networks
     vpn_services = ""
     networks = ""
-    port_list = []
     proxy_list = []
     for i in range(1, num_proxies + 1):
         port = base_port + i - 1
         vpn_services += service_template.format(
-            index=i, port=port, nordvpn_user=nordvpn_user, nordvpn_pass=nordvpn_pass, network=network
+            index=i, port=port, nordvpn_user=nordvpn_user, nordvpn_pass=nordvpn_pass, network=network,
+            proxy_user=proxy_user, proxy_pass=proxy_pass
         )
         networks += f"  vpn_net_{i}:\n    driver: bridge\n"
-        port_list.append(port)
-        proxy_list.append(f"Proxy {i}: http://badvibez:forever@{server_ip}:{port}")
+        proxy_list.append(f"Proxy {i}: http://{proxy_user}:{proxy_pass}@{server_ip}:{port}")
 
     docker_compose_content += vpn_services
     docker_compose_content += network_template.format(networks=networks)
@@ -109,29 +105,10 @@ networks:
 
     print(f"Proxy list generated at: {proxies_file_path}")
 
-    # Set up UFW rules if enabled
-    if enable_ufw:
-        setup_ufw_rules(port_list)
-
-def setup_ufw_rules(port_list):
-    """
-    Set up UFW rules for the given list of ports.
-    """
-    print("Setting up UFW rules...")
-    try:
-        for port in port_list:
-            # Allow each port in UFW
-            subprocess.run(["sudo", "ufw", "allow", f"{port}/tcp"], check=True)
-        # Reload UFW to apply changes
-        subprocess.run(["sudo", "ufw", "reload"], check=True)
-        print("UFW rules set up successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error setting up UFW rules: {e}")
-
 # Example usage
 if __name__ == "__main__":
     # Load configuration from config.yaml
     config = load_config()
 
-    # Generate proxies and UFW rules
+    # Generate proxies
     generate_proxies_with_config(config)
