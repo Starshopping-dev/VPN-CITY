@@ -11,12 +11,24 @@ docker_compose_content = """version: '3.8'
 services:
 """
 
+# Tinyproxy config template
+tinyproxy_config = """User nobody
+Group nobody
+Port 8888
+Timeout 600
+LogLevel Info
+MaxClients 100
+BasicAuth {proxy_user} {proxy_pass}
+Allow 0.0.0.0/0
+Listen 0.0.0.0
+"""
+
 # Service template
-service_template = """
+def get_service_template(index, nordvpn_user, nordvpn_pass, countries, network, port):
+    """Generate service configuration for docker-compose"""
+    return f"""
   vpn_{index}:
-    container_name: vpn_{index}
     image: azinchen/nordvpn:latest
-    privileged: true
     cap_add:
       - NET_ADMIN
     devices:
@@ -32,35 +44,22 @@ service_template = """
     ports:
       - "{port}:8888"
     restart: unless-stopped
-    networks:
-      - vpn_net_{index}
     logging:
       driver: "json-file"
       options:
         max-size: "1m"
+    networks:
+      - vpn_net_{index}
 
   tinyproxy_{index}:
-    container_name: tinyproxy_{index}
     image: vimagick/tinyproxy
+    container_name: tinyproxy_{index}
     network_mode: service:vpn_{index}
     volumes:
-      - ./tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf
+      - ./data/tinyproxy_{index}.conf:/etc/tinyproxy/tinyproxy.conf:ro
     depends_on:
       - vpn_{index}
-    restart: unless-stopped
-"""
-
-# Tinyproxy config template
-tinyproxy_config = """User nobody
-Group nobody
-Port 8888
-Timeout 600
-LogLevel Info
-MaxClients 100
-BasicAuth {proxy_user} {proxy_pass}
-Allow 0.0.0.0/0
-Listen 0.0.0.0
-"""
+    restart: unless-stopped"""
 
 # Network template
 network_template = """
@@ -130,7 +129,6 @@ COUNTRY_CODES = {
     'United Kingdom': 'GB', 'United States': 'US', 'Uruguay': 'UY',
     'Uzbekistan': 'UZ', 'Venezuela': 'VE', 'Vietnam': 'VN'
 }
-
 
 def load_config(config_path="config.yaml"):
     """
@@ -254,16 +252,14 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
             with open(config_path, "w") as f:
                 f.write(tinyproxy_config.format(proxy_user=proxy_user, proxy_pass=proxy_pass))
             
-            # Update service template to use data directory
-            current_service = service_template.format(
-                index=i,
-                port=port,
-                nordvpn_user=nordvpn_user,
-                nordvpn_pass=nordvpn_pass,
-                network=network,
-                countries=countries,
-                proxy_user=proxy_user,
-                proxy_pass=proxy_pass
+            # Build service with staggering but no healthcheck
+            current_service = get_service_template(
+                i,
+                nordvpn_user,
+                nordvpn_pass,
+                countries,
+                network,
+                port
             )
             vpn_services += current_service
             proxy_list.append(f"{proxy_user}:{proxy_pass}@{server_ip}:{port}")
@@ -343,3 +339,4 @@ if __name__ == "__main__":
 
     # Generate proxies and UFW rules
     generate_proxies_with_config(config)
+
