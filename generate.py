@@ -26,6 +26,11 @@ Listen 0.0.0.0
 # Service template
 def get_service_template(index, nordvpn_user, nordvpn_pass, countries, network, port):
     """Generate service configuration for docker-compose"""
+    # Stagger cron times by 30 seconds for each container
+    cron_minute = f"*/{3}"  # Base 3-minute rotation
+    cron_second = (index - 1) * 30  # Stagger by 30 seconds
+    cron_schedule = f"RECREATE_VPN_CRON={cron_minute} * * * * sleep {cron_second}"
+    
     return f"""
   vpn_{index}:
     image: azinchen/nordvpn:latest
@@ -38,7 +43,7 @@ def get_service_template(index, nordvpn_user, nordvpn_pass, countries, network, 
       - PASS={nordvpn_pass}
       - COUNTRY={countries}
       - RANDOM_TOP=1000
-      - RECREATE_VPN_CRON=*/3 * * * *
+      - {cron_schedule}
       - NETWORK={network}
       - OPENVPN_OPTS=--mute-replay-warnings
     ports:
@@ -49,17 +54,7 @@ def get_service_template(index, nordvpn_user, nordvpn_pass, countries, network, 
       options:
         max-size: "1m"
     networks:
-      - vpn_net_{index}
-
-  tinyproxy_{index}:
-    image: vimagick/tinyproxy
-    container_name: tinyproxy_{index}
-    network_mode: service:vpn_{index}
-    volumes:
-      - ./data/tinyproxy_{index}.conf:/etc/tinyproxy/tinyproxy.conf:ro
-    depends_on:
-      - vpn_{index}
-    restart: unless-stopped"""
+      - vpn_net_{index}"""
 
 # Network template
 network_template = """
