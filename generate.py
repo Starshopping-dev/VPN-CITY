@@ -26,11 +26,6 @@ Listen 0.0.0.0
 # Service template
 def get_service_template(index, nordvpn_user, nordvpn_pass, countries, network, port):
     """Generate service configuration for docker-compose"""
-    # Stagger cron times by 30 seconds for each container
-    cron_minute = f"*/{3}"  # Base 3-minute rotation
-    cron_second = (index - 1) * 30  # Stagger by 30 seconds
-    cron_schedule = f"RECREATE_VPN_CRON={cron_minute} * * * * sleep {cron_second}"
-    
     return f"""
   vpn_{index}:
     image: azinchen/nordvpn:latest
@@ -43,7 +38,7 @@ def get_service_template(index, nordvpn_user, nordvpn_pass, countries, network, 
       - PASS={nordvpn_pass}
       - COUNTRY={countries}
       - RANDOM_TOP=1000
-      - {cron_schedule}
+      - RECREATE_VPN_CRON=*/3 * * * *
       - NETWORK={network}
       - OPENVPN_OPTS=--mute-replay-warnings
     ports:
@@ -54,7 +49,17 @@ def get_service_template(index, nordvpn_user, nordvpn_pass, countries, network, 
       options:
         max-size: "1m"
     networks:
-      - vpn_net_{index}"""
+      - vpn_net_{index}
+
+  tinyproxy_{index}:
+    image: vimagick/tinyproxy
+    container_name: tinyproxy_{index}
+    network_mode: service:vpn_{index}
+    volumes:
+      - ./data/tinyproxy_{index}.conf:/etc/tinyproxy/tinyproxy.conf:ro
+    depends_on:
+      - vpn_{index}
+    restart: unless-stopped"""
 
 # Network template
 network_template = """
@@ -151,43 +156,22 @@ def get_server_ip():
 
 
 def get_selected_countries(config):
-    """Get country IDs based on selected countries in the config."""
-    MAX_COUNTRIES = 5  # Maximum number of countries per container
+    """Get list of selected countries, limited to 2 per proxy for better stability"""
+    countries = []
     
-    # Get list of working countries
-    WORKING_COUNTRIES = {
-        'Vietnam': '234',
-        'Luxembourg': '126',
-        'Germany': '81',
-        'France': '74',
-        'UK': '227',
-        'US': '228',
-        'Netherlands': '153',
-        'Sweden': '208',
-        'Switzerland': '209',
-        'Spain': '202'
-    }
+    if config["nordvpn"]["countries"].get("random", False):
+        # Get all countries set to True
+        available = [k for k, v in config["nordvpn"]["countries"].items() 
+                    if isinstance(v, bool) and v and k != "random"]
+        # Pick 2 random countries instead of 5
+        if available:
+            countries = random.sample(available, min(2, len(available)))
+    else:
+        # Get specifically selected countries, limit to 2
+        countries = [k for k, v in config["nordvpn"]["countries"].items() 
+                    if isinstance(v, bool) and v][:2]
     
-    # If random is true, pick 5 random working countries
-    if config['nordvpn']['countries'].get('random', False):
-        selected_ids = random.sample(list(WORKING_COUNTRIES.values()), MAX_COUNTRIES)
-        logging.info(f"Using random countries: {';'.join(selected_ids)}")
-        return ';'.join(selected_ids)
-    
-    # Otherwise, get enabled countries from config
-    enabled_countries = []
-    for country, enabled in config['nordvpn']['countries'].items():
-        if enabled and country in WORKING_COUNTRIES:
-            enabled_countries.append(WORKING_COUNTRIES[country])
-            if len(enabled_countries) >= MAX_COUNTRIES:
-                break
-    
-    if not enabled_countries:
-        # Fallback to 5 random working countries
-        selected_ids = random.sample(list(WORKING_COUNTRIES.values()), MAX_COUNTRIES)
-        return ';'.join(selected_ids)
-    
-    return ';'.join(enabled_countries)
+    return ",".join(countries)
 
 
 def is_port_available(port):

@@ -54,6 +54,6 @@ ip:port:username:password
 
 ## Notes
 - Maximum 6 proxies (NordVPN connection limit)
-- Each proxy rotates between 5 countries
+- Each proxy rotates between 2 countries (reduced from 5 for stability)
 - Uses NordVPN service credentials (not regular account login)
 - Ports start at base_port (default 8880)
