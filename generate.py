@@ -262,7 +262,7 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
                 port
             )
             vpn_services += current_service
-            proxy_list.append(f"{proxy_user}:{proxy_pass}@{server_ip}:{port}")
+            proxy_list.append(f"{server_ip}:{port}:{proxy_user}:{proxy_pass}")
 
         # Build networks section
         networks_section = "\nnetworks:\n"
@@ -326,6 +326,11 @@ def validate_config(config):
     for key in required_proxies:
         if key not in config["proxies"]:
             raise ValueError(f"Missing {key} in proxies section")
+    
+    # Cap proxy count at 6 if it exceeds the limit
+    if config["proxies"]["count"] > 6:
+        config["proxies"]["count"] = 6
+        print("Note: Proxy count capped at 6 to stay within NordVPN connection limits")
     
     return True
 
