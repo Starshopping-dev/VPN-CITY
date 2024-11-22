@@ -2,6 +2,8 @@ import os
 import yaml
 import socket
 import subprocess
+import logging
+import random
 
 # Built-in country data
 BUILTIN_COUNTRIES = {
@@ -36,10 +38,85 @@ BUILTIN_COUNTRIES = {
 
 # Country codes mapping
 COUNTRY_CODES = {
-    'Albania': 'AL', 'Algeria': 'DZ', 'Andorra': 'AD', 'Argentina': 'AR',
-    # ... add all country codes ...
-    'Vietnam': 'VN'
+    'Albania': 'AL', 'Algeria': 'DZ', 'Andorra': 'AD', 'Argentina': 'AR', 'Armenia': 'AM',
+    'Australia': 'AU', 'Austria': 'AT', 'Azerbaijan': 'AZ', 'Bahamas': 'BS',
+    'Bangladesh': 'BD', 'Belgium': 'BE', 'Belize': 'BZ', 'Bermuda': 'BM', 'Bhutan': 'BT',
+    'Bolivia': 'BO', 'Bosnia and Herzegovina': 'BA', 'Brazil': 'BR',
+    'Brunei Darussalam': 'BN', 'Bulgaria': 'BG', 'Cambodia': 'KH', 'Canada': 'CA',
+    'Cayman Islands': 'KY', 'Chile': 'CL', 'Colombia': 'CO', 'Costa Rica': 'CR',
+    'Croatia': 'HR', 'Cyprus': 'CY', 'Czech Republic': 'CZ', 'Denmark': 'DK',
+    'Dominican Republic': 'DO', 'Ecuador': 'EC', 'Egypt': 'EG', 'El Salvador': 'SV',
+    'Estonia': 'EE', 'Finland': 'FI', 'France': 'FR', 'Georgia': 'GE', 'Germany': 'DE',
+    'Ghana': 'GH', 'Greece': 'GR', 'Greenland': 'GL', 'Guam': 'GU', 'Guatemala': 'GT',
+    'Honduras': 'HN', 'Hong Kong': 'HK', 'Hungary': 'HU', 'Iceland': 'IS', 'India': 'IN',
+    'Indonesia': 'ID', 'Ireland': 'IE', 'Isle of Man': 'IM', 'Israel': 'IL',
+    'Italy': 'IT', 'Jamaica': 'JM', 'Japan': 'JP', 'Jersey': 'JE', 'Kazakhstan': 'KZ',
+    'Kenya': 'KE', 'Latvia': 'LV', 'Lebanon': 'LB', 'Liechtenstein': 'LI',
+    'Lithuania': 'LT', 'Luxembourg': 'LU', 'Malaysia': 'MY', 'Malta': 'MT',
+    'Mexico': 'MX', 'Moldova': 'MD', 'Monaco': 'MC', 'Mongolia': 'MN',
+    'Montenegro': 'ME', 'Morocco': 'MA', 'Myanmar': 'MM', 'Nepal': 'NP',
+    'Netherlands': 'NL', 'New Zealand': 'NZ', 'Nigeria': 'NG', 'North Macedonia': 'MK',
+    'Norway': 'NO', 'Pakistan': 'PK', 'Panama': 'PA', 'Papua New Guinea': 'PG',
+    'Paraguay': 'PY', 'Peru': 'PE', 'Philippines': 'PH', 'Poland': 'PL',
+    'Portugal': 'PT', 'Puerto Rico': 'PR', 'Romania': 'RO', 'Serbia': 'RS',
+    'Singapore': 'SG', 'Slovakia': 'SK', 'Slovenia': 'SI', 'South Africa': 'ZA',
+    'South Korea': 'KR', 'Spain': 'ES', 'Sri Lanka': 'LK', 'Sweden': 'SE',
+    'Switzerland': 'CH', 'Taiwan': 'TW', 'Thailand': 'TH', 'Trinidad and Tobago': 'TT',
+    'Turkey': 'TR', 'Ukraine': 'UA', 'United Arab Emirates': 'AE',
+    'United Kingdom': 'GB', 'United States': 'US', 'Uruguay': 'UY',
+    'Uzbekistan': 'UZ', 'Venezuela': 'VE', 'Vietnam': 'VN'
 }
+
+# Docker Compose header
+docker_compose_content = """version: '3.8'
+
+services:
+"""
+
+# Template for each service pair
+service_template = """
+  vpn_{index}:
+    image: azinchen/nordvpn:latest
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      - USER={nordvpn_user}
+      - PASS={nordvpn_pass}
+      - COUNTRY={countries}
+      - RANDOM_TOP=1000
+      - RECREATE_VPN_CRON=*/3 * * * *
+      - NETWORK={network}
+      - OPENVPN_OPTS=--mute-replay-warnings
+    ports:
+      - "{port}:8888"
+    restart: unless-stopped
+    networks:
+      - vpn_net_{index}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  tinyproxy_{index}:
+    image: vimagick/tinyproxy
+    container_name: tinyproxy_{index}
+    network_mode: service:vpn_{index}
+    volumes:
+      - ./data:/etc/tinyproxy
+    depends_on:
+      - vpn_{index}
+    restart: unless-stopped
+"""
+
+# Network template
+network_template = """
+networks:
+  vpn_net_{index}:
+    driver: bridge
+"""
 
 
 def load_config(config_path="config.yaml"):
@@ -67,186 +144,208 @@ def get_server_ip():
         return socket.gethostbyname(hostname)
 
 
-def get_country_ids(config):
-    """
-    Returns a semicolon-separated string of country IDs
-    based on the 'random' setting and enabled countries in the config.
-    """
-    if config["nordvpn"]["countries"].get("random", False):
-        return ';'.join(map(str, BUILTIN_COUNTRIES.values()))
-
-    enabled_ids = [
-        BUILTIN_COUNTRIES[country]
-        for country, enabled in config["nordvpn"]["countries"].items()
-        if enabled and country in BUILTIN_COUNTRIES and country != "random"
-    ]
-
-    return ';'.join(map(str, enabled_ids))
+def get_selected_countries(config):
+    """Get country IDs based on selected countries in the config."""
+    MAX_COUNTRIES = 5  # Maximum number of countries per container
+    
+    # Get list of working countries
+    WORKING_COUNTRIES = {
+        'Vietnam': '234',
+        'Luxembourg': '126',
+        'Germany': '81',
+        'France': '74',
+        'UK': '227',
+        'US': '228',
+        'Netherlands': '153',
+        'Sweden': '208',
+        'Switzerland': '209',
+        'Spain': '202'
+    }
+    
+    # If random is true, pick 5 random working countries
+    if config['nordvpn']['countries'].get('random', False):
+        selected_ids = random.sample(list(WORKING_COUNTRIES.values()), MAX_COUNTRIES)
+        logging.info(f"Using random countries: {';'.join(selected_ids)}")
+        return ';'.join(selected_ids)
+    
+    # Otherwise, get enabled countries from config
+    enabled_countries = []
+    for country, enabled in config['nordvpn']['countries'].items():
+        if enabled and country in WORKING_COUNTRIES:
+            enabled_countries.append(WORKING_COUNTRIES[country])
+            if len(enabled_countries) >= MAX_COUNTRIES:
+                break
+    
+    if not enabled_countries:
+        # Fallback to 5 random working countries
+        selected_ids = random.sample(list(WORKING_COUNTRIES.values()), MAX_COUNTRIES)
+        return ';'.join(selected_ids)
+    
+    return ';'.join(enabled_countries)
 
 
 def is_port_available(port):
-    """
-    Check if a port is available on localhost.
-    Returns True if port is available, False if in use.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(("localhost", port)) != 0
+    """Check if a port is available"""
+    if port < 1 or port > 65535:
+        logging.error(f"Invalid port number: {port}")
+        return False
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(('', port))
+        available = True
+    except:
+        logging.warning(f"Port {port} is already in use")
+        available = False
+    finally:
+        sock.close()
+    return available
 
 
 def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
-    """
-    Generate a docker-compose.yml for Tinyproxy + NordVPN pairs using configurations from a YAML file,
-    and set up UFW rules if enabled.
-    """
-    # Load configurations
-    nordvpn_user = config["nordvpn"]["user"]
-    nordvpn_pass = config["nordvpn"]["pass"]
-    network = config["nordvpn"]["network"]
-    num_proxies = config["proxies"]["count"]
-    base_port = config["proxies"]["base_port"]
-    proxy_user = config["proxies"]["username"]
-    proxy_pass = config["proxies"]["password"]
-    enable_ufw = config["ufw"]["enable"]
+    try:
+        # Load configurations with validation - match your config structure
+        nordvpn_user = config["nordvpn"]["user"]
+        nordvpn_pass = config["nordvpn"]["pass"]
+        network = config["nordvpn"]["network"]
+        num_proxies = config["proxies"]["count"]
+        base_port = config["proxies"]["base_port"]
+        proxy_user = config["proxies"]["username"]
+        proxy_pass = config["proxies"]["password"]
+        enable_ufw = config["ufw"]["enable"]
 
-    # Get server IP
-    server_ip = get_server_ip()
+        # Validate port range
+        if base_port + num_proxies > 65535:
+            raise ValueError("Port range exceeds maximum (65535)")
 
-    # Create output directory and tinyproxy config directory with proper permissions
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, "data"), exist_ok=True)
-    logs_dir = os.path.join(output_dir, "data", "logs")
-    os.makedirs(logs_dir, exist_ok=True)
-    os.chmod(logs_dir, 0o777)  # Give full permissions to logs directory
+        # Check UFW if enabled
+        if enable_ufw:
+            try:
+                # Try with sudo
+                subprocess.run(["sudo", "ufw", "status"], check=True, capture_output=True)
+            except subprocess.CalledProcessError:
+                try:
+                    # Try without sudo as fallback
+                    subprocess.run(["ufw", "status"], check=True, capture_output=True)
+                except subprocess.CalledProcessError:
+                    logging.warning("UFW not available or not active. Skipping UFW rules.")
+                    enable_ufw = False
 
-    # Create tinyproxy config FIRST
-    tinyproxy_config = f"""User nobody
+        # Create directories with proper permissions
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            data_dir = os.path.join(output_dir, "data")
+            os.makedirs(data_dir, exist_ok=True)
+            logs_dir = os.path.join(data_dir, "logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            # Set full permissions for data and logs directories
+            os.chmod(data_dir, 0o777)
+            os.chmod(logs_dir, 0o777)
+            
+            # Create and set permissions for tinyproxy log file
+            log_file = os.path.join(logs_dir, "tinyproxy.log")
+            open(log_file, 'a').close()  # Create if not exists
+            os.chmod(log_file, 0o666)
+        except Exception as e:
+            logging.error(f"Failed to create directories: {e}")
+            raise
+
+        # Get countries with validation
+        try:
+            countries = get_selected_countries(config)
+            if not countries:
+                raise ValueError("No valid countries selected")
+        except Exception as e:
+            logging.error(f"Failed to get country IDs: {e}")
+            raise
+
+        # Check ports before proceeding
+        available_ports = []
+        for i in range(num_proxies):
+            port = base_port + i
+            if is_port_available(port):
+                available_ports.append(port)
+            else:
+                logging.warning(f"Port {port} unavailable, skipping...")
+        
+        if not available_ports:
+            raise ValueError(f"No available ports found starting from {base_port}")
+
+        # Generate services with delays
+        vpn_services = ""
+        proxy_list = []
+        
+        for i, port in enumerate(available_ports, 1):
+            # Add delay for each container except the first one
+            delay = f"""
+    depends_on:
+      vpn_{i-1}:
+        condition: service_healthy""" if i > 1 else ""
+
+            current_service = service_template.format(
+                index=i,
+                port=port,
+                nordvpn_user=nordvpn_user,
+                nordvpn_pass=nordvpn_pass,
+                network=network,
+                countries=countries,
+                delay=delay  # Add delay to template
+            )
+            
+            vpn_services += current_service
+            proxy_list.append(f"Proxy {i}: http://{proxy_user}:{proxy_pass}@{get_server_ip()}:{port}")
+
+        # Create tinyproxy config
+        tinyproxy_config = """User nobody
 Group nobody
 Port 8888
 Timeout 600
-LogFile "/etc/tinyproxy/logs/tinyproxy.log"
+LogFile "/etc/tinyproxy/tinyproxy.log"
 LogLevel Info
 MaxClients 100
 StatFile "/etc/tinyproxy/stats.html"
 DefaultErrorFile "/etc/tinyproxy/default.html"
 ViaProxyName "tinyproxy"
-BasicAuth {proxy_user} {proxy_pass}
+BasicAuth badvibez forever
 
 # Allow connections from the local machine
 Allow 127.0.0.1/32
 
-# Allow all external connections
+# Allow all external connections (if needed, use with caution)
 Allow 0.0.0.0/0
 
-# Listen on all interfaces
+# Ensure TinyProxy listens on all interfaces (for both local and external access)
 Listen 0.0.0.0
 """
 
-    # Write tinyproxy config
-    config_path = os.path.join(output_dir, "data", "tinyproxy.conf")
-    with open(config_path, "w") as f:
-        f.write(tinyproxy_config)
+        # Write tinyproxy config
+        os.makedirs(os.path.join(output_dir, "data"), exist_ok=True)
+        with open(os.path.join(output_dir, "data", "tinyproxy.conf"), "w") as f:
+            f.write(tinyproxy_config)
 
-    # Docker Compose header
-    docker_compose_content = """
-version: '3.9'
+        # Write files with error handling
+        try:
+            with open(os.path.join(output_dir, "docker-compose.yml"), "w") as f:
+                f.write(docker_compose_content + vpn_services + network_template)
+            
+            with open(os.path.join(output_dir, "proxies.txt"), "w") as f:
+                f.write("\n".join(proxy_list))
+        except Exception as e:
+            logging.error(f"Failed to write configuration files: {e}")
+            raise
 
-services:
-"""
+        logging.info(f"Successfully generated {len(available_ports)} proxies")
+        if len(available_ports) < num_proxies:
+            logging.warning(f"Only {len(available_ports)} of {num_proxies} requested proxies could be created")
 
-    # Template for Tinyproxy + NordVPN pair
-    service_template = """
-  nordvpn_{index}:
-    image: azinchen/nordvpn:latest
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun
-    environment:
-      - USER={nordvpn_user}
-      - PASS={nordvpn_pass}
-      - COUNTRY={countries}
-      - RANDOM_TOP=1000
-      - RECREATE_VPN_CRON=*/3 * * * *
-      - NETWORK={network}
-      - OPENVPN_OPTS=--mute-replay-warnings
-    ports:
-      - "{port}:8888"
-    restart: unless-stopped
-    networks:
-      - vpn_net_{index}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
+        # Set up UFW rules if enabled
+        if enable_ufw:
+            setup_ufw_rules(available_ports)
 
-  tinyproxy_{index}:
-    image: vimagick/tinyproxy
-    container_name: tinyproxy_{index}
-    network_mode: service:nordvpn_{index}
-    volumes:
-      - ./data:/etc/tinyproxy
-    depends_on:
-      - nordvpn_{index}
-    restart: unless-stopped
-"""
-
-    # Network template
-    network_template = """
-networks:
-{networks}
-"""
-
-    # Generate services and networks
-    vpn_services = ""
-    networks = ""
-    proxy_list = []
-    port_list = []
-    
-    # Check port availability before proceeding
-    for i in range(num_proxies):
-        port = base_port + i
-        if not is_port_available(port):
-            raise ValueError(f"Port {port} is already in use. Please choose a different base_port.")
-    
-    # Get countries string ONCE before the loop
-    countries = get_country_ids(config)
-    
-    for i in range(1, num_proxies + 1):
-        port = base_port + i - 1
-        vpn_services += service_template.format(
-            index=i,
-            port=port,
-            nordvpn_user=nordvpn_user,
-            nordvpn_pass=nordvpn_pass,
-            network=network,
-            proxy_user=proxy_user,
-            proxy_pass=proxy_pass,
-            countries=countries,  # Use the same countries string
-        )
-        networks += f"  vpn_net_{i}:\n    driver: bridge\n"
-        proxy_list.append(f"Proxy {i}: http://{proxy_user}:{proxy_pass}@{server_ip}:{port}")
-        port_list.append(port)
-
-    docker_compose_content += vpn_services
-    docker_compose_content += network_template.format(networks=networks)
-
-    # Write to docker-compose.yml
-    docker_compose_path = os.path.join(output_dir, "docker-compose.yml")
-    with open(docker_compose_path, "w") as f:
-        f.write(docker_compose_content)
-
-    print(f"Docker Compose file generated at: {docker_compose_path}")
-
-    # Write proxies to a file
-    proxies_file_path = os.path.join(output_dir, "proxies.txt")
-    with open(proxies_file_path, "w") as f:
-        f.write("\n".join(proxy_list))
-
-    print(f"Proxy list generated at: {proxies_file_path}")
-
-    # Set up UFW rules if enabled
-    if enable_ufw:
-        setup_ufw_rules(port_list)
+    except Exception as e:
+        logging.error(f"Failed to generate proxy setup: {e}")
+        raise
 
 
 def setup_ufw_rules(port_list):
@@ -266,13 +365,20 @@ def setup_ufw_rules(port_list):
 
 
 def validate_config(config):
-    """
-    Validates the config structure.
-    """
-    required_keys = ["nordvpn", "proxies", "ufw"]
-    for key in required_keys:
-        if key not in config:
-            raise ValueError(f"Missing required key in config.yaml: {key}")
+    """Validates the config structure."""
+    if "nordvpn" not in config:
+        raise ValueError("Missing nordvpn section in config")
+    if "proxies" not in config:
+        raise ValueError("Missing proxies section in config")
+    if "ufw" not in config:
+        raise ValueError("Missing ufw section in config")
+    
+    # Check nordvpn section
+    required_nordvpn = ["user", "pass", "network", "countries"]
+    for key in required_nordvpn:
+        if key not in config["nordvpn"]:
+            raise ValueError(f"Missing {key} in nordvpn section")
+    
     return True
 
 
