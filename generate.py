@@ -5,6 +5,70 @@ import subprocess
 import logging
 import random
 
+# Docker Compose header
+docker_compose_content = """version: '3.8'
+
+services:
+"""
+
+# Service template
+service_template = """
+  vpn_{index}:
+    container_name: vpn_{index}
+    image: azinchen/nordvpn:latest
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      - USER={nordvpn_user}
+      - PASS={nordvpn_pass}
+      - COUNTRY={countries}
+      - RANDOM_TOP=1000
+      - RECREATE_VPN_CRON=*/3 * * * *
+      - NETWORK={network}
+      - OPENVPN_OPTS=--mute-replay-warnings
+    ports:
+      - "{port}:8888"
+    restart: unless-stopped
+    networks:
+      - vpn_net_{index}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  tinyproxy_{index}:
+    container_name: tinyproxy_{index}
+    image: vimagick/tinyproxy
+    network_mode: service:vpn_{index}
+    volumes:
+      - ./tinyproxy_{index}.conf:/etc/tinyproxy/tinyproxy.conf:ro
+    depends_on:
+      - vpn_{index}
+    restart: unless-stopped
+"""
+
+# Tinyproxy config template
+tinyproxy_config = """User nobody
+Group nobody
+Port 8888
+Timeout 600
+LogLevel Info
+MaxClients 100
+BasicAuth {proxy_user} {proxy_pass}
+Allow 0.0.0.0/0
+Listen 0.0.0.0
+"""
+
+# Network template
+network_template = """
+networks:
+  vpn_net_{index}:
+    driver: bridge
+"""
+
 # Built-in country data
 BUILTIN_COUNTRIES = {
     'Albania': 2, 'Algeria': 3, 'Andorra': 5, 'Argentina': 10, 'Armenia': 11,
@@ -66,58 +130,6 @@ COUNTRY_CODES = {
     'United Kingdom': 'GB', 'United States': 'US', 'Uruguay': 'UY',
     'Uzbekistan': 'UZ', 'Venezuela': 'VE', 'Vietnam': 'VN'
 }
-
-# Docker Compose header
-docker_compose_content = """version: '3.8'
-
-services:
-"""
-
-# Service template
-service_template = """
-  vpn_{index}:
-    container_name: vpn_{index}
-    image: azinchen/nordvpn:latest
-    privileged: true
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun
-    environment:
-      - USER={nordvpn_user}
-      - PASS={nordvpn_pass}
-      - COUNTRY={countries}
-      - RANDOM_TOP=1000
-      - RECREATE_VPN_CRON=*/3 * * * *
-      - NETWORK={network}
-      - OPENVPN_OPTS=--mute-replay-warnings
-    ports:
-      - "{port}:8888"
-    restart: unless-stopped
-    networks:
-      - vpn_net_{index}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-
-  tinyproxy_{index}:
-    container_name: tinyproxy_{index}
-    image: vimagick/tinyproxy
-    network_mode: service:vpn_{index}
-    volumes:
-      - ./data:/etc/tinyproxy
-    depends_on:
-      - vpn_{index}
-    restart: unless-stopped
-"""
-
-# Network template
-network_template = """
-networks:
-  vpn_net_{index}:
-    driver: bridge
-"""
 
 
 def load_config(config_path="config.yaml"):
@@ -216,32 +228,7 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
 
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
-        data_dir = os.path.join(output_dir, "data")
-        os.makedirs(data_dir, exist_ok=True)
         
-        # Create tinyproxy config
-        tinyproxy_config = f"""User nobody
-Group nobody
-Port 8888
-Timeout 600
-LogFile "/etc/tinyproxy/tinyproxy.log"
-LogLevel Info
-MaxClients 100
-StatFile "/etc/tinyproxy/stats.html"
-DefaultErrorFile "/etc/tinyproxy/default.html"
-ViaProxyName "tinyproxy"
-BasicAuth {proxy_user} {proxy_pass}
-Allow 127.0.0.1/32
-Allow 0.0.0.0/0
-Listen 0.0.0.0"""
-
-        # Write tinyproxy config
-        with open(os.path.join(data_dir, "tinyproxy.conf"), "w") as f:
-            f.write(tinyproxy_config)
-
-        # Set permissions
-        os.chmod(os.path.join(data_dir, "tinyproxy.conf"), 0o666)
-
         # Get available ports
         available_ports = []
         current_port = base_port
@@ -253,33 +240,36 @@ Listen 0.0.0.0"""
         # Get country list
         countries = get_selected_countries(config)
 
-        # Generate services and networks
+        # Generate services
         vpn_services = ""
-        networks = []
         proxy_list = []
         server_ip = get_server_ip()
         
+        # Build services section
         for i, port in enumerate(available_ports, 1):
-            # Add service
             current_service = service_template.format(
                 index=i,
                 port=port,
                 nordvpn_user=nordvpn_user,
                 nordvpn_pass=nordvpn_pass,
                 network=network,
-                countries=countries
+                countries=countries,
+                proxy_user=proxy_user,
+                proxy_pass=proxy_pass
             )
             vpn_services += current_service
-            networks.append(network_template.format(index=i).strip())
-            
-            # Simpler proxy format
             proxy_list.append(f"{proxy_user}:{proxy_pass}@{server_ip}:{port}")
 
-        # Write docker-compose with proper networks section
-        with open(os.path.join(output_dir, "docker-compose.yml"), "w") as f:
-            f.write(docker_compose_content + vpn_services + "\n" + "\n".join(networks))
+        # Build networks section
+        networks_section = "\nnetworks:\n"
+        for i in range(1, len(available_ports) + 1):
+            networks_section += f"  vpn_net_{i}:\n    driver: bridge\n"
 
-        # Write proxy list without "Proxy X:" prefix
+        # Write complete docker-compose.yml
+        with open(os.path.join(output_dir, "docker-compose.yml"), "w") as f:
+            f.write(docker_compose_content + vpn_services + networks_section)
+
+        # Write proxy list
         with open(os.path.join(output_dir, "proxies.txt"), "w") as f:
             f.write("\n".join(proxy_list))
 
