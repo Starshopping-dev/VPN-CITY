@@ -118,6 +118,23 @@ networks:
     driver: bridge
 """
 
+# Tinyproxy config
+tinyproxy_config = """User nobody
+Group nobody
+Port 8888
+Timeout 600
+LogFile "/etc/tinyproxy/tinyproxy.log"
+LogLevel Info
+MaxClients 100
+StatFile "/etc/tinyproxy/stats.html"
+DefaultErrorFile "/etc/tinyproxy/default.html"
+ViaProxyName "tinyproxy"
+BasicAuth badvibez forever
+Allow 127.0.0.1/32
+Allow 0.0.0.0/0
+Listen 0.0.0.0
+"""
+
 
 def load_config(config_path="config.yaml"):
     """
@@ -204,7 +221,7 @@ def is_port_available(port):
 
 def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
     try:
-        # Load configurations with validation - match your config structure
+        # Load configurations
         nordvpn_user = config["nordvpn"]["user"]
         nordvpn_pass = config["nordvpn"]["pass"]
         network = config["nordvpn"]["network"]
@@ -212,14 +229,30 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
         base_port = config["proxies"]["base_port"]
         proxy_user = config["proxies"]["username"]
         proxy_pass = config["proxies"]["password"]
-        enable_ufw = config["ufw"]["enable"]
+
+        # Create tinyproxy config with credentials from config
+        tinyproxy_config = f"""User nobody
+Group nobody
+Port 8888
+Timeout 600
+LogFile "/etc/tinyproxy/tinyproxy.log"
+LogLevel Info
+MaxClients 100
+StatFile "/etc/tinyproxy/stats.html"
+DefaultErrorFile "/etc/tinyproxy/default.html"
+ViaProxyName "tinyproxy"
+BasicAuth {proxy_user} {proxy_pass}
+Allow 127.0.0.1/32
+Allow 0.0.0.0/0
+Listen 0.0.0.0
+"""
 
         # Validate port range
         if base_port + num_proxies > 65535:
             raise ValueError("Port range exceeds maximum (65535)")
 
         # Check UFW if enabled
-        if enable_ufw:
+        if config["ufw"]["enable"]:
             try:
                 # Try with sudo
                 subprocess.run(["sudo", "ufw", "status"], check=True, capture_output=True)
@@ -229,7 +262,7 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
                     subprocess.run(["ufw", "status"], check=True, capture_output=True)
                 except subprocess.CalledProcessError:
                     logging.warning("UFW not available or not active. Skipping UFW rules.")
-                    enable_ufw = False
+                    config["ufw"]["enable"] = False
 
         # Create directories with proper permissions
         try:
@@ -296,29 +329,6 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
             vpn_services += current_service
             proxy_list.append(f"Proxy {i}: http://{proxy_user}:{proxy_pass}@{get_server_ip()}:{port}")
 
-        # Create tinyproxy config
-        tinyproxy_config = """User nobody
-Group nobody
-Port 8888
-Timeout 600
-LogFile "/etc/tinyproxy/tinyproxy.log"
-LogLevel Info
-MaxClients 100
-StatFile "/etc/tinyproxy/stats.html"
-DefaultErrorFile "/etc/tinyproxy/default.html"
-ViaProxyName "tinyproxy"
-BasicAuth badvibez forever
-
-# Allow connections from the local machine
-Allow 127.0.0.1/32
-
-# Allow all external connections (if needed, use with caution)
-Allow 0.0.0.0/0
-
-# Ensure TinyProxy listens on all interfaces (for both local and external access)
-Listen 0.0.0.0
-"""
-
         # Write tinyproxy config
         os.makedirs(os.path.join(output_dir, "data"), exist_ok=True)
         with open(os.path.join(output_dir, "data", "tinyproxy.conf"), "w") as f:
@@ -340,7 +350,7 @@ Listen 0.0.0.0
             logging.warning(f"Only {len(available_ports)} of {num_proxies} requested proxies could be created")
 
         # Set up UFW rules if enabled
-        if enable_ufw:
+        if config["ufw"]["enable"]:
             setup_ufw_rules(available_ports)
 
     except Exception as e:
