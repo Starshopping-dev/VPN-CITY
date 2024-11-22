@@ -73,9 +73,10 @@ docker_compose_content = """version: '3.8'
 services:
 """
 
-# Template for each service pair
+# Service template
 service_template = """
   vpn_{index}:
+    container_name: vpn_{index}
     image: azinchen/nordvpn:latest
     privileged: true
     cap_add:
@@ -101,8 +102,8 @@ service_template = """
         max-size: "1m"
 
   tinyproxy_{index}:
-    image: vimagick/tinyproxy
     container_name: tinyproxy_{index}
+    image: vimagick/tinyproxy
     network_mode: service:vpn_{index}
     volumes:
       - ./data:/etc/tinyproxy
@@ -116,23 +117,6 @@ network_template = """
 networks:
   vpn_net_{index}:
     driver: bridge
-"""
-
-# Tinyproxy config
-tinyproxy_config = """User nobody
-Group nobody
-Port 8888
-Timeout 600
-LogFile "/etc/tinyproxy/tinyproxy.log"
-LogLevel Info
-MaxClients 100
-StatFile "/etc/tinyproxy/stats.html"
-DefaultErrorFile "/etc/tinyproxy/default.html"
-ViaProxyName "tinyproxy"
-BasicAuth badvibez forever
-Allow 127.0.0.1/32
-Allow 0.0.0.0/0
-Listen 0.0.0.0
 """
 
 
@@ -230,7 +214,12 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
         proxy_user = config["proxies"]["username"]
         proxy_pass = config["proxies"]["password"]
 
-        # Create tinyproxy config with credentials from config
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+        data_dir = os.path.join(output_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # Create tinyproxy config
         tinyproxy_config = f"""User nobody
 Group nobody
 Port 8888
@@ -244,114 +233,62 @@ ViaProxyName "tinyproxy"
 BasicAuth {proxy_user} {proxy_pass}
 Allow 127.0.0.1/32
 Allow 0.0.0.0/0
-Listen 0.0.0.0
-"""
+Listen 0.0.0.0"""
 
-        # Validate port range
-        if base_port + num_proxies > 65535:
-            raise ValueError("Port range exceeds maximum (65535)")
+        # Write tinyproxy config
+        with open(os.path.join(data_dir, "tinyproxy.conf"), "w") as f:
+            f.write(tinyproxy_config)
 
-        # Check UFW if enabled
-        if config["ufw"]["enable"]:
-            try:
-                # Try with sudo
-                subprocess.run(["sudo", "ufw", "status"], check=True, capture_output=True)
-            except subprocess.CalledProcessError:
-                try:
-                    # Try without sudo as fallback
-                    subprocess.run(["ufw", "status"], check=True, capture_output=True)
-                except subprocess.CalledProcessError:
-                    logging.warning("UFW not available or not active. Skipping UFW rules.")
-                    config["ufw"]["enable"] = False
+        # Set permissions
+        os.chmod(os.path.join(data_dir, "tinyproxy.conf"), 0o666)
 
-        # Create directories with proper permissions
-        try:
-            os.makedirs(output_dir, exist_ok=True)
-            data_dir = os.path.join(output_dir, "data")
-            os.makedirs(data_dir, exist_ok=True)
-            logs_dir = os.path.join(data_dir, "logs")
-            os.makedirs(logs_dir, exist_ok=True)
-            
-            # Set full permissions for data and logs directories
-            os.chmod(data_dir, 0o777)
-            os.chmod(logs_dir, 0o777)
-            
-            # Create and set permissions for tinyproxy log file
-            log_file = os.path.join(logs_dir, "tinyproxy.log")
-            open(log_file, 'a').close()  # Create if not exists
-            os.chmod(log_file, 0o666)
-        except Exception as e:
-            logging.error(f"Failed to create directories: {e}")
-            raise
-
-        # Get countries with validation
-        try:
-            countries = get_selected_countries(config)
-            if not countries:
-                raise ValueError("No valid countries selected")
-        except Exception as e:
-            logging.error(f"Failed to get country IDs: {e}")
-            raise
-
-        # Check ports before proceeding
+        # Get available ports
         available_ports = []
-        for i in range(num_proxies):
-            port = base_port + i
-            if is_port_available(port):
-                available_ports.append(port)
-            else:
-                logging.warning(f"Port {port} unavailable, skipping...")
-        
-        if not available_ports:
-            raise ValueError(f"No available ports found starting from {base_port}")
+        current_port = base_port
+        while len(available_ports) < num_proxies:
+            if is_port_available(current_port):
+                available_ports.append(current_port)
+            current_port += 1
 
-        # Generate services with delays
+        # Get country list
+        countries = get_selected_countries(config)
+
+        # Generate services and networks
         vpn_services = ""
+        networks = []
         proxy_list = []
+        server_ip = get_server_ip()
         
         for i, port in enumerate(available_ports, 1):
-            # Add delay for each container except the first one
-            delay = f"""
-    depends_on:
-      vpn_{i-1}:
-        condition: service_healthy""" if i > 1 else ""
-
+            # Add service
             current_service = service_template.format(
                 index=i,
                 port=port,
                 nordvpn_user=nordvpn_user,
                 nordvpn_pass=nordvpn_pass,
                 network=network,
-                countries=countries,
-                delay=delay  # Add delay to template
+                countries=countries
             )
-            
             vpn_services += current_service
-            proxy_list.append(f"Proxy {i}: http://{proxy_user}:{proxy_pass}@{get_server_ip()}:{port}")
-
-        # Write tinyproxy config
-        os.makedirs(os.path.join(output_dir, "data"), exist_ok=True)
-        with open(os.path.join(output_dir, "data", "tinyproxy.conf"), "w") as f:
-            f.write(tinyproxy_config)
-
-        # Write files with error handling
-        try:
-            with open(os.path.join(output_dir, "docker-compose.yml"), "w") as f:
-                f.write(docker_compose_content + vpn_services + network_template)
+            networks.append(network_template.format(index=i).strip())
             
-            with open(os.path.join(output_dir, "proxies.txt"), "w") as f:
-                f.write("\n".join(proxy_list))
-        except Exception as e:
-            logging.error(f"Failed to write configuration files: {e}")
-            raise
+            # Simpler proxy format
+            proxy_list.append(f"{proxy_user}:{proxy_pass}@{server_ip}:{port}")
 
-        logging.info(f"Successfully generated {len(available_ports)} proxies")
-        if len(available_ports) < num_proxies:
-            logging.warning(f"Only {len(available_ports)} of {num_proxies} requested proxies could be created")
+        # Write docker-compose with proper networks section
+        with open(os.path.join(output_dir, "docker-compose.yml"), "w") as f:
+            f.write(docker_compose_content + vpn_services + "\n" + "\n".join(networks))
 
-        # Set up UFW rules if enabled
+        # Write proxy list without "Proxy X:" prefix
+        with open(os.path.join(output_dir, "proxies.txt"), "w") as f:
+            f.write("\n".join(proxy_list))
+
+        # Setup UFW rules if enabled
         if config["ufw"]["enable"]:
             setup_ufw_rules(available_ports)
+
+        print(f"Generated {len(available_ports)} proxy configurations")
+        print(f"Proxy list saved to {output_dir}/proxies.txt")
 
     except Exception as e:
         logging.error(f"Failed to generate proxy setup: {e}")
@@ -367,12 +304,13 @@ def setup_ufw_rules(port_list):
         for port in port_list:
             # Allow each port in UFW
             subprocess.run(["sudo", "ufw", "allow", f"{port}/tcp"], check=True)
+            print(f"Port {port} allowed in UFW.")
+        
         # Reload UFW to apply changes
         subprocess.run(["sudo", "ufw", "reload"], check=True)
-        print("UFW rules set up successfully.")
+        print("UFW rules reloaded successfully.")
     except subprocess.CalledProcessError as e:
         print(f"Error setting up UFW rules: {e}")
-
 
 def validate_config(config):
     """Validates the config structure."""
@@ -389,12 +327,21 @@ def validate_config(config):
         if key not in config["nordvpn"]:
             raise ValueError(f"Missing {key} in nordvpn section")
     
+    # Check proxies section
+    required_proxies = ["count", "base_port", "username", "password"]
+    for key in required_proxies:
+        if key not in config["proxies"]:
+            raise ValueError(f"Missing {key} in proxies section")
+    
     return True
 
 
 if __name__ == "__main__":
     # Load configuration from config.yaml
     config = load_config()
+    
+    # Validate config
+    validate_config(config)
 
     # Generate proxies and UFW rules
     generate_proxies_with_config(config)
