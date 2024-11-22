@@ -44,7 +44,7 @@ service_template = """
     image: vimagick/tinyproxy
     network_mode: service:vpn_{index}
     volumes:
-      - ./tinyproxy_{index}.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      - ./tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf
     depends_on:
       - vpn_{index}
     restart: unless-stopped
@@ -226,8 +226,10 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
         proxy_user = config["proxies"]["username"]
         proxy_pass = config["proxies"]["password"]
 
-        # Create output directory
+        # Create output and data directories
         os.makedirs(output_dir, exist_ok=True)
+        data_dir = os.path.join(output_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
         
         # Get available ports
         available_ports = []
@@ -247,6 +249,12 @@ def generate_proxies_with_config(config, output_dir="multi_proxy_setup"):
         
         # Build services section
         for i, port in enumerate(available_ports, 1):
+            # Create tinyproxy config in data directory
+            config_path = os.path.join(data_dir, f"tinyproxy_{i}.conf")
+            with open(config_path, "w") as f:
+                f.write(tinyproxy_config.format(proxy_user=proxy_user, proxy_pass=proxy_pass))
+            
+            # Update service template to use data directory
             current_service = service_template.format(
                 index=i,
                 port=port,
